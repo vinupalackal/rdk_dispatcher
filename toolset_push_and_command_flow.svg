@@ -1,0 +1,106 @@
+<svg viewBox="0 0 760 1120" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>Payload encryption and message-kind routing: definition push vs. command push</title>
+<desc>Two WRP payload kinds -- a static definition push (protocol + toolset schema, no commands) and a dynamic command push (protocol + toolset + commands) -- are both encrypted at the payload level before being carried over TLS/WSS transport inside a WRP envelope. The device receives the envelope, decrypts the payload, and routes on message kind: a definition push goes to Plugin Manager to load/register the toolset; a command push goes over local JSON-RPC IPC into Execution Framework to actually run the command. This "static/dynamic" message-kind axis is adopted from the user-supplied diagram and is distinct from plugin_contract.h's load_type field (compiled-in vs dlopen), which describes how a plugin binary is loaded, not what kind of WRP message this is.</desc>
+
+<style>
+  .box { fill: #ffffff; stroke: #b9c2cc; stroke-width: 1; }
+  .box-strong { fill: #fff8e6; stroke: #c9922c; stroke-width: 1.5; }
+  .box-sandbox { fill: #f2eefc; stroke: #8a5fd6; stroke-width: 1.5; }
+  .diamond { fill: #eef3fb; stroke: #4a72b8; stroke-width: 1.5; }
+  .t-title { font: 700 15px sans-serif; fill: #1a1f29; }
+  .t-h { font: 700 11px sans-serif; fill: #1a1f29; }
+  .t-s { font: 400 9.5px sans-serif; fill: #45505c; }
+  .t-m { font: 400 9px sans-serif; fill: #6b7684; }
+  .t-accent { font: 700 10px sans-serif; fill: #b5651d; }
+  .t-branch { font: 700 10px sans-serif; fill: #4a72b8; }
+  .arrow { stroke: #59636e; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+</style>
+
+<defs>
+  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#59636e"/></marker>
+</defs>
+
+<text x="40" y="30" class="t-title">Payload encryption + message-kind routing</text>
+<text x="40" y="48" class="t-s">Adopted from user-supplied diagram, 2026-08-12 — see openspec/changes/require-payload-encryption-and-message-routing/</text>
+
+<rect x="40" y="70" width="300" height="60" rx="8" class="box"/>
+<text x="52" y="90" class="t-h">Static: Protocol + Toolset</text>
+<text x="52" y="104" class="t-s">definition push — no commands,</text>
+<text x="52" y="116" class="t-s">schema/manifest only</text>
+
+<rect x="420" y="70" width="300" height="60" rx="8" class="box"/>
+<text x="432" y="90" class="t-h">Dynamic: Protocol + Toolset + Commands</text>
+<text x="432" y="104" class="t-s">command push — carries an actual</text>
+<text x="432" y="116" class="t-s">command to execute now</text>
+
+<path class="arrow" d="M 190 130 L 340 168"/>
+<path class="arrow" d="M 570 130 L 420 168"/>
+
+<rect x="270" y="168" width="220" height="46" rx="6" class="box-strong"/>
+<text x="380" y="187" class="t-h" text-anchor="middle">Encrypt Payload</text>
+<text x="380" y="200" class="t-m" text-anchor="middle">payload-level, before transport</text>
+<path class="arrow" d="M 380 214 L 380 246"/>
+
+<rect x="270" y="246" width="220" height="42" rx="6" class="box"/>
+<text x="380" y="264" class="t-h" text-anchor="middle">TLS / WSS Transport</text>
+<text x="380" y="278" class="t-m" text-anchor="middle">XMiDT / Parodus connection</text>
+<path class="arrow" d="M 380 288 L 380 320"/>
+
+<rect x="270" y="320" width="220" height="42" rx="6" class="box"/>
+<text x="380" y="338" class="t-h" text-anchor="middle">WRP Envelope</text>
+<text x="380" y="352" class="t-m" text-anchor="middle">msg_type 3, content_type application/json</text>
+<path class="arrow" d="M 380 362 L 380 394"/>
+
+<rect x="270" y="394" width="220" height="42" rx="6" class="box"/>
+<text x="380" y="412" class="t-h" text-anchor="middle">Device Receives</text>
+<text x="380" y="426" class="t-m" text-anchor="middle">Parodus Agent</text>
+<path class="arrow" d="M 380 436 L 380 468"/>
+
+<rect x="270" y="468" width="220" height="46" rx="6" class="box-strong"/>
+<text x="380" y="487" class="t-h" text-anchor="middle">Decrypt Payload</text>
+<text x="380" y="500" class="t-m" text-anchor="middle">Dispatch Core</text>
+<path class="arrow" d="M 380 514 L 380 546"/>
+
+<polygon points="380,546 440,586 380,626 320,586" class="diamond"/>
+<text x="380" y="591" class="t-h" text-anchor="middle">Type?</text>
+
+<path class="arrow" d="M 340 606 L 180 660"/>
+<text x="220" y="640" class="t-branch">static</text>
+<path class="arrow" d="M 420 606 L 580 660"/>
+<text x="540" y="640" class="t-branch">dynamic</text>
+
+<rect x="60" y="660" width="240" height="50" rx="8" class="box"/>
+<text x="72" y="680" class="t-h">Load Plugins</text>
+<text x="72" y="694" class="t-m">Plugin Manager registers/loads the</text>
+<text x="72" y="705" class="t-m">toolset — see toolset-lifecycle/spec.md</text>
+
+<rect x="460" y="660" width="240" height="50" rx="8" class="box"/>
+<text x="472" y="680" class="t-h">JSON-RPC Local IPC</text>
+<text x="472" y="694" class="t-m">the same UDS/JSON boundary §4.6</text>
+<text x="472" y="705" class="t-m">already specifies</text>
+<path class="arrow" d="M 580 710 L 580 742"/>
+
+<rect x="460" y="742" width="240" height="46" rx="8" class="box"/>
+<text x="472" y="761" class="t-h">Execute Commands</text>
+<text x="472" y="774" class="t-m">Execution Framework, sandboxed</text>
+<text x="472" y="785" class="t-m">toolset process, per §5.1</text>
+
+<rect x="40" y="830" width="680" height="240" rx="8" class="box"/>
+<text x="52" y="850" class="t-h">Reconciled against the existing spec suite</text>
+<text x="52" y="870" class="t-s">1. Payload encryption is now required, layered under TLS/WSS transport (not transport</text>
+<text x="62" y="882" class="t-s">alone) — resolves OPEN_QUESTIONS.md C7. Every WRP payload is encrypted before it enters</text>
+<text x="62" y="894" class="t-s">the WRP envelope, both for toolset.push and for ordinary command traffic.</text>
+<text x="52" y="912" class="t-s">2. "Static" and "dynamic" here describe WRP MESSAGE KIND (definition push vs. command</text>
+<text x="62" y="924" class="t-s">push) — this is a different axis from plugin_contract.h's load_type field (compiled-in vs.</text>
+<text x="62" y="936" class="t-s">dlopen()), which describes how a plugin binary is loaded, not what kind of message this</text>
+<text x="62" y="948" class="t-s">is. Both a statically-loaded and a dynamically-loaded plugin can be the target of either a</text>
+<text x="62" y="960" class="t-s">definition push or a command push -- the two axes are independent, not the same thing.</text>
+<text x="52" y="978" class="t-s">3. The "static" branch (Load Plugins) is this diagram's version of toolset.push /</text>
+<text x="62" y="990" class="t-s">define-synchronous-toolset-push -- a definition/manifest arriving without an execution</text>
+<text x="62" y="1002" class="t-s">request. The "dynamic" branch (JSON-RPC Local IPC -&gt; Execute Commands) is the existing</text>
+<text x="62" y="1014" class="t-s">§5.1 command-execution flow / tools/call, unchanged in substance, now explicitly shown</text>
+<text x="62" y="1026" class="t-s">decrypting before Dispatch Core's ACL checkpoint runs.</text>
+<text x="52" y="1044" class="t-s">4. Decryption happens in Dispatch Core, before the single ACL checkpoint (FR-4) --</text>
+<text x="62" y="1056" class="t-s">encryption is a confidentiality control on the wire, not a substitute for authorization,</text>
+<text x="62" y="1068" class="t-s">and does not change where or how ACL is evaluated.</text>
+</svg>

@@ -1,0 +1,159 @@
+<svg viewBox="0 0 680 1060" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>RDK Dispatcher standalone architecture, with sandboxed execution and ACL Policy Store</title>
+<desc>Cloud platform connected over XMiDT transport to a device-side RDK Dispatcher replacing rpcd Core. Plugin Manager owns only coarse toolset routing and health; each Toolset Plugin owns its own method dispatch table, mirroring the ubus/RBUS/Thunder broker-owner split. Dispatch Core enforces ACL exactly once, querying a dedicated ACL Policy Store with named groups, deny rules, and write-implies-read fallback. Execution Framework decodes requests and launches each Toolset Plugin inside its own sandbox: namespaces, seccomp, cgroups, and dropped capabilities per a declared manifest. Platform Adapters for RBUS, IARM/Thunder, and CLI stay separate and forward caller identity into each subsystem's own ACL. A dashed capability-sync path, authenticated by device identity, reports installed toolsets to the cloud. Toolset Store and RDM Client handle install/rollback. Local clients receive the same ACL check as cloud commands.</desc>
+
+<style>
+  .box { fill: #ffffff; stroke: #b9c2cc; stroke-width: 1; }
+  .box-strong { fill: #fff8e6; stroke: #c9922c; stroke-width: 1.5; }
+  .box-sandbox { fill: #f2eefc; stroke: #8a5fd6; stroke-width: 1.5; }
+  .region { fill: #f6f8fa; stroke: #b9c2cc; stroke-width: 1; stroke-dasharray: 5 4; }
+  .t-title { font: 700 15px sans-serif; fill: #1a1f29; }
+  .t-h { font: 700 11px sans-serif; fill: #1a1f29; }
+  .t-s { font: 400 9.5px sans-serif; fill: #45505c; }
+  .t-m { font: 400 9px sans-serif; fill: #6b7684; }
+  .t-accent { font: 700 10px sans-serif; fill: #b5651d; }
+  .t-purple { font: 700 10px sans-serif; fill: #6d3fc4; }
+  .arrow { stroke: #59636e; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+  .arrow-dash { stroke: #b5651d; stroke-width: 1.5; stroke-dasharray: 4 3; fill: none; marker-end: url(#arrowAccent); }
+</style>
+
+<defs>
+  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#59636e"/></marker>
+  <marker id="arrowAccent" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#b5651d"/></marker>
+</defs>
+
+<text x="40" y="28" class="t-title">RDK Dispatcher — sandboxed execution + ACL Policy Store (no rpcd / ubus)</text>
+
+<rect x="40" y="42" width="600" height="90" rx="10" class="region"/>
+<text x="52" y="58" class="t-h">CLOUD / WAN</text>
+<rect x="52" y="66" width="280" height="56" rx="8" class="box"/>
+<text x="62" y="82" class="t-h">AI / Ops Clients + MCP Gateway</text>
+<text x="62" y="96" class="t-s">AuthN/AuthZ, routing, tool catalog</text>
+<text x="62" y="109" class="t-s">device model mapping</text>
+<rect x="348" y="66" width="280" height="56" rx="8" class="box"/>
+<text x="358" y="82" class="t-h">Cloud Tool &amp; Skill Platform</text>
+<text x="358" y="96" class="t-s">Generic skills library, versioning,</text>
+<text x="358" y="109" class="t-s">analytics &amp; reporting</text>
+
+<rect x="40" y="146" width="600" height="34" rx="8" class="box-strong"/>
+<text x="340" y="167" class="t-h" text-anchor="middle">XMiDT Transport — WRP / Parodus / WebSocket</text>
+<path class="arrow" d="M 250 132 L 250 146"/>
+<path class="arrow" d="M 250 232 L 250 216"/>
+<text x="256" y="200" class="t-s">request / response</text>
+<path class="arrow-dash" d="M 430 132 L 430 146"/>
+<path class="arrow-dash" d="M 430 232 L 430 216"/>
+<text x="436" y="200" class="t-accent">capability sync</text>
+
+<rect x="40" y="232" width="600" height="470" rx="12" class="region"/>
+<text x="52" y="250" class="t-h">DEVICE (RDK-B / RDK-V)</text>
+
+<rect x="52" y="262" width="90" height="60" rx="8" class="box"/>
+<text x="62" y="280" class="t-h">Parodus</text>
+<text x="62" y="293" class="t-s">Agent</text>
+<text x="62" y="306" class="t-s">(existing)</text>
+
+<rect x="152" y="262" width="330" height="150" rx="8" class="box-strong"/>
+<text x="317" y="280" class="t-h" text-anchor="middle">RDK DISPATCHER</text>
+<text x="317" y="293" class="t-accent" text-anchor="middle">replaces rpcd Core — no ubus dependency</text>
+
+<rect x="162" y="302" width="150" height="46" rx="6" class="box"/>
+<text x="169" y="315" class="t-s">Dispatch Core</text>
+<text x="169" y="327" class="t-m">JSON-RPC · AuthN/AuthZ</text>
+<text x="169" y="338" class="t-m">ACL (queries store →)</text>
+
+<rect x="317" y="302" width="150" height="46" rx="6" class="box"/>
+<text x="324" y="315" class="t-s">Plugin Manager</text>
+<text x="324" y="327" class="t-m">COARSE ONLY: toolset</text>
+<text x="324" y="338" class="t-m">→ process, health</text>
+
+<rect x="162" y="354" width="150" height="46" rx="6" class="box"/>
+<text x="169" y="367" class="t-s">Toolset Plugins</text>
+<text x="169" y="379" class="t-m">own method table each</text>
+<text x="169" y="390" class="t-m">common · net · wifi · vendor</text>
+
+<rect x="317" y="354" width="150" height="46" rx="6" class="box"/>
+<text x="324" y="367" class="t-s">Schema &amp; Discovery</text>
+<text x="324" y="379" class="t-m">list · schema · version</text>
+<text x="324" y="390" class="t-m">capabilities</text>
+
+<rect x="494" y="262" width="146" height="58" rx="8" class="box"/>
+<text x="504" y="280" class="t-h">Local Clients</text>
+<text x="504" y="292" class="t-s">(UDS)</text>
+<text x="504" y="306" class="t-m">same ACL as cloud, no bypass</text>
+
+<rect x="494" y="330" width="146" height="58" rx="8" class="box"/>
+<text x="504" y="348" class="t-h">ACL Policy Store</text>
+<text x="504" y="361" class="t-m">groups · deny rules ·</text>
+<text x="504" y="373" class="t-m">write-implies-read · audit</text>
+
+<path class="arrow" d="M 482 292 L 494 292"/>
+<path class="arrow" d="M 312 320 L 494 355"/>
+
+<rect x="52" y="424" width="588" height="70" rx="8" class="box-strong"/>
+<text x="346" y="442" class="t-h" text-anchor="middle">EXECUTION FRAMEWORK</text>
+<text x="346" y="458" class="t-s" text-anchor="middle">decode request  →  execute against resolved plugin (UDS/JSON)  →  validate</text>
+<text x="346" y="472" class="t-m" text-anchor="middle">timeouts · resource limits (cgroup-enforced) · output size limits · command validation</text>
+<path class="arrow" d="M 312 412 L 320 424"/>
+<text x="330" y="410" class="t-m">resolved plugin handle</text>
+
+<rect x="52" y="514" width="588" height="66" rx="8" class="box-sandbox"/>
+<text x="346" y="532" class="t-purple" text-anchor="middle">SANDBOXED TOOLSET PLUGIN RUNTIME</text>
+<text x="346" y="548" class="t-s" text-anchor="middle">mount/PID namespace · seccomp-bpf profile · cgroup limits · dropped capabilities</text>
+<text x="346" y="562" class="t-m" text-anchor="middle">per-plugin profile, declared in the Toolset Store manifest and checked at install by RDM Client</text>
+<path class="arrow" d="M 346 494 L 346 514"/>
+
+<rect x="52" y="602" width="588" height="52" rx="8" class="box"/>
+<text x="504" y="618" class="t-h">Toolset Store</text>
+<text x="504" y="630" class="t-m">versioned packages + manifest</text>
+<text x="82" y="618" class="t-h">RDM Client</text>
+<text x="82" y="630" class="t-m">download · verify · install · rollback</text>
+<path class="arrow" d="M 320 618 L 380 618"/>
+<path class="arrow" d="M 470 580 L 470 602"/>
+<path class="arrow" d="M 200 580 L 200 602"/>
+
+<text x="52" y="680" class="t-h">Platform Abstraction &amp; Execution Adapters — separate IPC, forward caller identity</text>
+<rect x="52" y="690" width="138" height="56" rx="8" class="box"/>
+<text x="62" y="708" class="t-h">RBUS Adapter</text>
+<text x="62" y="721" class="t-m">Broadband profile</text>
+<text x="62" y="733" class="t-m">TR-181 bridge</text>
+
+<rect x="200" y="690" width="138" height="56" rx="8" class="box"/>
+<text x="210" y="708" class="t-h">IARM / Thunder</text>
+<text x="210" y="721" class="t-m">Video profile</text>
+<text x="210" y="733" class="t-m">COM-RPC / JSON-RPC</text>
+
+<rect x="348" y="690" width="138" height="56" rx="8" class="box"/>
+<text x="358" y="708" class="t-h">dmcli / CLI</text>
+<text x="358" y="721" class="t-m">Data model &amp;</text>
+<text x="358" y="733" class="t-m">command-line adapter</text>
+
+<rect x="496" y="690" width="144" height="56" rx="8" class="box"/>
+<text x="506" y="708" class="t-h">HAL / FS / Shell</text>
+<text x="506" y="721" class="t-m">Vendor libs, /proc,</text>
+<text x="506" y="733" class="t-m">fallback executor</text>
+
+<path class="arrow" d="M 121 580 L 121 690"/>
+<path class="arrow" d="M 269 580 L 269 690"/>
+<path class="arrow" d="M 417 580 L 417 690"/>
+<path class="arrow" d="M 568 580 L 568 690"/>
+
+<rect x="52" y="770" width="588" height="34" rx="6" class="box"/>
+<text x="346" y="791" class="t-h" text-anchor="middle">Linux / RDK OS — kernel, drivers, filesystem, processes</text>
+<path class="arrow" d="M 346 746 L 346 770"/>
+
+<rect x="52" y="822" width="588" height="210" rx="8" class="box"/>
+<text x="62" y="840" class="t-h">Reviewed against rpcd/ubus — decisions made explicit</text>
+<text x="62" y="858" class="t-s">1. Hybrid dispatch: Plugin Manager owns coarse toolset→process routing and</text>
+<text x="72" y="870" class="t-s">health only; each Toolset Plugin owns its own method table (matches the</text>
+<text x="72" y="882" class="t-s">ubusd/rtrouted/Thunder broker-owner split, not one central mega-registry).</text>
+<text x="62" y="898" class="t-s">2. ACL check happens once in Dispatch Core, against a dedicated ACL Policy</text>
+<text x="72" y="910" class="t-s">Store (named groups, deny-first, write-implies-read, audited) — plugins and</text>
+<text x="72" y="922" class="t-s">adapters trust it, but adapters still forward identity into RBUS/Thunder's</text>
+<text x="72" y="934" class="t-s">own ACL to avoid the confused-deputy risk from doc 16.</text>
+<text x="62" y="950" class="t-s">3. Toolset Plugins run out-of-process AND sandboxed: namespaces, seccomp,</text>
+<text x="72" y="962" class="t-s">cgroups, dropped capabilities per a manifest checked at install time.</text>
+<text x="62" y="978" class="t-s">4. Local Clients (UDS) get the same ACL check as cloud commands — no</text>
+<text x="72" y="990" class="t-s">local-socket bypass, unlike rpcd's known gotcha.</text>
+<text x="62" y="1006" class="t-s">5. Command auth (SAT, stateless) and capability-sync auth (device identity)</text>
+<text x="72" y="1018" class="t-s">are kept as two separate, purpose-fit mechanisms.</text>
+</svg>
