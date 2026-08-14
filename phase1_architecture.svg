@@ -1,0 +1,106 @@
+<svg viewBox="0 0 760 900" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>Phase 1 architecture — in-process exception, three request shapes</title>
+<desc>Phase 1 of the RDK Dispatcher: read-only triage discovery, real command execution, and toolset.push, all running through Dispatch Core's single ACL checkpoint. Per add-phase1-command-execution-exception (2026-08-14), the command-execution toolset runs in-process as a tracked, time-bounded exception to the project's general out-of-process/sandboxed rule; the Triage Toolset is treated the same way for Phase 1 under a documented assumption pending formal reconciliation. No sandboxing, no payload encryption, and no on-demand process spawning are part of Phase 1 -- all deferred to Phase 2.</desc>
+
+<style>
+  .box { fill: #ffffff; stroke: #b9c2cc; stroke-width: 1; }
+  .box-strong { fill: #fff8e6; stroke: #c9922c; stroke-width: 1.5; }
+  .box-exception { fill: #fdecec; stroke: #c0392b; stroke-width: 1.5; stroke-dasharray: 5 3; }
+  .region { fill: #f6f8fa; stroke: #b9c2cc; stroke-width: 1; stroke-dasharray: 5 4; }
+  .t-title { font: 700 15px sans-serif; fill: #1a1f29; }
+  .t-h { font: 700 11px sans-serif; fill: #1a1f29; }
+  .t-s { font: 400 9.5px sans-serif; fill: #45505c; }
+  .t-m { font: 400 9px sans-serif; fill: #6b7684; }
+  .t-accent { font: 700 10px sans-serif; fill: #b5651d; }
+  .t-danger { font: 700 10px sans-serif; fill: #c0392b; }
+  .arrow { stroke: #59636e; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+  .arrow-a { stroke: #4a72b8; stroke-width: 1.5; fill: none; marker-end: url(#arrowA); }
+  .arrow-b { stroke: #2e8b57; stroke-width: 1.5; fill: none; marker-end: url(#arrowB); }
+  .arrow-c { stroke: #c0392b; stroke-width: 1.5; fill: none; marker-end: url(#arrowC); }
+</style>
+
+<defs>
+  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#59636e"/></marker>
+  <marker id="arrowA" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#4a72b8"/></marker>
+  <marker id="arrowB" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#2e8b57"/></marker>
+  <marker id="arrowC" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#c0392b"/></marker>
+</defs>
+
+<text x="40" y="26" class="t-title">Phase 1 Architecture — in-process exception (A15)</text>
+<text x="40" y="42" class="t-s">Blue = Shape A (read-only discovery)  ·  Green = Shape B (real command execution)  ·  Red = Shape C (toolset.push)</text>
+
+<rect x="40" y="56" width="600" height="40" rx="8" class="region"/>
+<text x="52" y="72" class="t-h">CLOUD</text>
+<text x="52" y="86" class="t-s">AI/Ops clients, MCP Gateway, build/release pipeline (toolset.push originator)</text>
+
+<rect x="40" y="118" width="600" height="30" rx="8" class="box-strong"/>
+<text x="340" y="138" class="t-h" text-anchor="middle">XMiDT Transport — WRP / Parodus (TLS/WSS, unencrypted payload in Phase 1)</text>
+<path class="arrow" d="M 340 96 L 340 118"/>
+<path class="arrow" d="M 340 178 L 340 148"/>
+
+<rect x="40" y="178" width="600" height="590" rx="12" class="region"/>
+<text x="52" y="196" class="t-h">DEVICE (Phase 1)</text>
+
+<rect x="52" y="206" width="90" height="42" rx="8" class="box"/>
+<text x="60" y="223" class="t-h">Parodus</text>
+<text x="60" y="235" class="t-m">Agent</text>
+
+<rect x="160" y="206" width="480" height="90" rx="8" class="box-strong"/>
+<text x="400" y="224" class="t-h" text-anchor="middle">DISPATCH CORE (in-process, Dispatch Core's own home)</text>
+<text x="400" y="240" class="t-s" text-anchor="middle">JSON-RPC parse → SAT token validate (P1-14, blocked on A1) → single ACL checkpoint (FR-4)</text>
+<text x="400" y="256" class="t-s" text-anchor="middle">→ registry_resolve() two-tier lookup (docs/20 §7) → dispatch</text>
+<text x="400" y="272" class="t-danger" text-anchor="middle">No payload decryption step -- Phase 1 payloads are plain</text>
+<path class="arrow" d="M 142 227 L 160 227"/>
+
+<rect x="52" y="316" width="220" height="56" rx="8" class="box"/>
+<text x="62" y="334" class="t-h">ACL Policy Store</text>
+<text x="62" y="348" class="t-m">groups · deny-first · write-implies-read</text>
+<text x="62" y="360" class="t-m">audit log (NFR-5, unconditional)</text>
+<path class="arrow" d="M 300 260 L 272 330"/>
+
+<rect x="300" y="316" width="340" height="56" rx="8" class="box"/>
+<text x="310" y="334" class="t-h">Plugin Manager</text>
+<text x="310" y="348" class="t-m">coarse toolset registry — in-process for Phase 1 (§0 assumption)</text>
+<text x="310" y="360" class="t-m">no on-demand spawn logic exercised (A8 not active yet)</text>
+<path class="arrow" d="M 400 296 L 470 316"/>
+
+<rect x="52" y="400" width="270" height="80" rx="8" class="box"/>
+<text x="187" y="418" class="t-h" text-anchor="middle">Triage Toolset</text>
+<text x="187" y="432" class="t-s" text-anchor="middle">triage.capabilities (read-only)</text>
+<text x="187" y="446" class="t-s" text-anchor="middle">static + dynamic plugin merge</text>
+<text x="187" y="462" class="t-accent" text-anchor="middle">In-process for Phase 1 — §0 documented assumption</text>
+<path class="arrow-a" d="M 300 372 L 220 400"/>
+
+<rect x="360" y="400" width="280" height="80" rx="8" class="box-exception"/>
+<text x="500" y="418" class="t-h" text-anchor="middle">Command-Execution Toolset(s)</text>
+<text x="500" y="432" class="t-s" text-anchor="middle">real commands (P1-4) + toolset.push targets (P1-5)</text>
+<text x="500" y="448" class="t-danger" text-anchor="middle">IN-PROCESS — explicit, tracked exception (A15)</text>
+<text x="500" y="462" class="t-m" text-anchor="middle">hardening to out-of-process/sandboxed: Phase 2</text>
+<path class="arrow-b" d="M 470 372 L 500 400"/>
+<path class="arrow-c" d="M 550 372 L 550 400"/>
+
+<rect x="52" y="510" width="588" height="60" rx="8" class="box"/>
+<text x="346" y="528" class="t-h" text-anchor="middle">toolset.push handler (inside Dispatch Core)</text>
+<text x="346" y="544" class="t-s" text-anchor="middle">dedicated ACL scope · inline signature/manifest verification · RDM boundary check (A6, unchanged)</text>
+<text x="346" y="558" class="t-s" text-anchor="middle">health-check-gated in-process swap (P1-10) — NOT the artifact-fallback model (that's Phase 2)</text>
+<path class="arrow-c" d="M 550 400 L 450 510"/>
+
+<rect x="52" y="600" width="588" height="50" rx="8" class="box"/>
+<text x="346" y="618" class="t-h" text-anchor="middle">RDM Client (existing, unchanged)</text>
+<text x="346" y="634" class="t-m" text-anchor="middle">Only exercised if a Phase 1 toolset needs a dlopen()-able binary — otherwise idle this phase</text>
+<path class="arrow" d="M 400 570 L 400 600" stroke-dasharray="3 3"/>
+
+<rect x="52" y="680" width="588" height="200" rx="8" class="box"/>
+<text x="62" y="698" class="t-h">What's deliberately absent from this diagram</text>
+<text x="62" y="716" class="t-s">1. No sandbox boxes (namespaces, seccomp, cgroups) -- FR-13/FR-14 deferred to Phase 2 for every</text>
+<text x="72" y="728" class="t-s">toolset shown here, per the tracked exception (A15).</text>
+<text x="62" y="746" class="t-s">2. No payload decryption step inside Dispatch Core -- Phase 1 payloads are plain JSON-RPC, only</text>
+<text x="72" y="758" class="t-s">signature/manifest-verified, per A7's unchanged phasing.</text>
+<text x="62" y="776" class="t-s">3. No spawn/idle-timeout logic -- A8's on-demand execution model applies once Phase 2 hardens</text>
+<text x="72" y="788" class="t-s">these toolsets to run out-of-process; nothing to spawn while they're in-process.</text>
+<text x="62" y="806" class="t-s">4. No Platform Adapters (RBUS/Thunder/CLI) -- out of Phase 1's scope entirely.</text>
+<text x="62" y="824" class="t-s">5. SAT token validation is shown as a step but its logic is blocked pending A1's confirmation --</text>
+<text x="72" y="836" class="t-s">this is the single most consequential open item for actually building this diagram's flows.</text>
+<text x="62" y="854" class="t-s">6. The Triage Toolset's in-process placement here is a documented assumption (§0 of docs/22),</text>
+<text x="72" y="866" class="t-s">not a re-confirmed decision -- pending formal reconciliation.</text>
+</svg>

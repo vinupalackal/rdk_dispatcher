@@ -23,6 +23,8 @@ rdk-dispatcher/
 ├── OPEN_QUESTIONS.md                                 every open question, one place, grouped
 │                                                      by status — check here before assuming
 │                                                      something is settled
+├── ROADMAP.md                                        which phase each decision/work item
+│                                                      belongs to (Phase 1, Phase 2, ...)
 ├── USER_GUIDE.md                                     how to use OpenSpec here + next steps
 ├── CLAUDE.md                                         hard rules Claude Code reads automatically
 ├── CLAUDE_CODE_WORKFLOW.md                           how to build this day-to-day in Claude Code

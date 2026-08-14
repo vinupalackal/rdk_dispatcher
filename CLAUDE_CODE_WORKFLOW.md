@@ -213,15 +213,16 @@ statically audit and debug in that case.
   `triage_wifi.c`'s `handle()` actually does. That behavior still has
   no OpenSpec coverage and remains open.
 - **Isolation trade-off vs. the broader spec's sandboxing requirement —
-  resolved.** `openspec/changes/define-plane-vs-toolset-model/` settles
-  this: FR-13/FR-14's out-of-process + sandboxing requirement governs
-  **toolset** plugins (Toolset Store-distributed, potentially
-  vendor-supplied) specifically, not Dispatch Core's own first-party
-  **plane** logic (config-apply, management, control, triage) that this
-  guide describes. `run_with_timeout()` was never meant to satisfy
-  FR-13/FR-14 — it was never governed by it in the first place, once
-  plane and toolset are correctly distinguished. This is not a license
-  to skip sandboxing for actual toolset plugins (wifi, DOCSIS, vendor,
-  etc.) — those still require the full out-of-process + namespace +
-  seccomp + cgroup treatment regardless of which planes their internal
-  logic touches.
+  reopened, not resolved.** `openspec/changes/define-plane-vs-toolset-model/`
+  was revised on 2026-08-13: there is no first-party exemption for
+  plane logic after all — every plane (config-apply, management,
+  control, triage) is implemented *as* a toolset, uniformly governed by
+  FR-13/FR-14 like any other. That means this guide's `run_with_timeout()`
+  + in-process `dlopen()` model is **not** compliant as written and
+  needs rework toward the out-of-process, sandboxed, Plugin-Manager-supervised
+  model — not a documentation fix, an actual code-shape change. The
+  real, unresolved tension this creates (IPC/latency overhead on a
+  sysevent thread that must never block, per this file's own hard
+  rules) is tracked against `OPEN_QUESTIONS.md` B3 (footprint budget)
+  and `define-plane-vs-toolset-model/tasks.md` §3 — treat this
+  reference-impl as needing a rework pass, not as a finished sketch.

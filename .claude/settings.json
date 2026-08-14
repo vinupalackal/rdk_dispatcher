@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "postToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "cppcheck --enable=warning,portability dispatcher_handlers.c dispatcher_triage.c && make test-dispatcher"
+      },
+      {
+        "matcher": "Edit|Write",
+        "command": "python3 tools/validate_triage_schema.py dispatcher_triage.c",
+        "condition": "file matches 'dispatcher_triage.c'"
+      }
+    ],
+    "preToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "echo 'Blocking direct bitbake full-image builds from agent' && exit 1",
+        "condition": "command contains 'bitbake rdk-generic'"
+      }
+    ]
+  }
+}
