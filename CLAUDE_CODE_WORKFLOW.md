@@ -148,15 +148,27 @@ across versions. Verify a configured server is active with `/mcp`.
 
 The core loader and example plugins are sketched in `reference-impl/`
 (`plugin_contract.h`, `dispatcher_core.c`, `plugins/triage_wifi.c`,
-`plugins/triage_core_static.c`, `triage_capabilities.c`) —
+`plugins/triage_core_static.c`, `triage_capabilities.c`,
+`dispatcher_command_path.c`, `toolset_resolution.c`,
+`mcp_schema_discovery.c`, `capability_sync_emission.c`) —
 **illustrative sketches, not reviewed production code.** The static
 (`triage_core_static.c`) vs. dynamic (`triage_wifi.c`) pairing and the
 `triage_capabilities.c` merge/response builder were added for Phase 1
-— see `openspec/changes/add-triage-skillset-mapping-phase1/`. Dispatcher core does discovery and routing only;
-each of the four planes is an independently loadable `.so`, discovered
-at init from `/usr/libexec/dispatcher/`. The contract mirrors `rpcd`'s
-`list`/`call` pair almost exactly: `describe()` is `list`, `handle()`
-is `call`.
+— design history in `openspec/changes/archive/add-triage-skillset-mapping-phase1/`,
+applied into `openspec/specs/triage/spec.md`. The MCP tool surface
+(`tools/call` via `dispatcher_command_path.c`'s `mcp_handle_tools_call()`,
+`tools/list` via `mcp_schema_discovery.c`'s `build_tools_list_response()`,
+and the shared capability-sync/`tools/list_changed` trigger point in
+`capability_sync_emission.c`) was added 2026-08-16, applying
+`openspec/changes/archive/define-toolset-as-mcp-tool-model/` and
+`openspec/changes/archive/resolve-tools-list-metadata-and-acl-scoping/`
+into `openspec/specs/dispatch-core/spec.md`,
+`openspec/specs/toolset-lifecycle/spec.md`, and
+`openspec/specs/capability-sync/spec.md`. Dispatcher core does discovery
+and routing only; each of the four planes is an independently loadable
+`.so`, discovered at init from `/usr/libexec/dispatcher/`. The contract
+mirrors `rpcd`'s `list`/`call` pair almost exactly: `describe()` is
+`list`, `handle()` is `call`.
 
 Why this maps well to `rpcd`'s model (see `docs/17_dispatcher_plugin_architecture_cross_check...`
 for the deeper comparison this project already did against `ubus`/RBUS/Thunder):
@@ -205,13 +217,17 @@ statically audit and debug in that case.
 
 ## Open threads (worth resolving before this build-out goes further)
 
-- **Triage as a fifth OpenSpec domain — Phase 1 started, not complete.**
-  `openspec/changes/add-triage-skillset-mapping-phase1/` now scopes and
-  drafts a `triage` domain, but deliberately only for capability
-  discovery (`triage.capabilities` over WRP) — not evidence capture,
-  `trace_id` correlation, or async enqueue, which is what
-  `triage_wifi.c`'s `handle()` actually does. That behavior still has
-  no OpenSpec coverage and remains open.
+- **Triage as a fifth OpenSpec domain — Phase 1 applied, spec-level
+  work done; behavior below still needs coverage.**
+  `openspec/specs/triage/spec.md` (applied 2026-08-16, design history
+  in `openspec/changes/archive/add-triage-skillset-mapping-phase1/`)
+  covers only capability discovery — not evidence capture, `trace_id`
+  correlation, or async enqueue, which is what `triage_wifi.c`'s
+  `handle()` actually does. That behavior still has no OpenSpec
+  coverage and remains open. Discovery itself goes through
+  `openspec/specs/toolset-lifecycle/spec.md`'s generic `tools/list`
+  mechanism, not a bespoke `triage.capabilities` WRP method — same as
+  any other toolset.
 - **Isolation trade-off vs. the broader spec's sandboxing requirement —
   reopened, not resolved.** `openspec/changes/define-plane-vs-toolset-model/`
   was revised on 2026-08-13: there is no first-party exemption for

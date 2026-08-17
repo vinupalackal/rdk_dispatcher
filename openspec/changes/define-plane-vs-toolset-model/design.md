@@ -116,6 +116,43 @@ toolset lifecycle management never branch on which platform they're
 running on. Only the namespace resolution step at plugin registration
 does.
 
+### Decision F: application management is a new toolset domain, not a new plane
+
+**Added 2026-08-14, per direct confirmation.** Whether to add a fifth
+plane for application lifecycle management (install, start, stop,
+update, monitor an app) was raised and resolved: **no new plane is
+needed.** Every activity "application management" implies already has
+a home in the four existing planes, because those planes are a
+lifecycle-phase axis, not a domain axis — installing/starting/
+stopping/tearing down an app is Management's own definition
+("interface/component lifecycle: init, reconfig, teardown") applied
+to a different kind of component; pushing an app's settings is
+Config-apply's job applied to a different consumer; reacting to an
+app crashing or becoming unresponsive is Control's job; capturing
+evidence when an app fails is Triage's job. None of these need a new
+lifecycle-phase category — they need the existing four, applied to a
+new *kind of thing*.
+
+That "new kind of thing" is what actually needs naming: **application
+is a new toolset domain**, alongside the existing extensible list
+(common, network, wifi, DOCSIS, vendor —
+`RDK_Dispatcher_Architecture_and_Requirements.md` §4.3). Plane
+(lifecycle phase) and domain (subject-matter area) are orthogonal
+axes. An application toolset uses the same pattern already established
+for domain toolsets like wifi — internally implementing config-apply,
+management, control, and triage logic for its own purposes — exactly
+as `define-plane-vs-toolset-model`'s "a toolset may still implement
+logic spanning multiple planes internally" already allows, unchanged
+by this decision.
+
+**Consequence: no new delivery mechanism needed either.** Since an
+application is modeled as a toolset, installing, updating, and rolling
+back an app already has a mechanism — RDM Client's manifest-declared-
+capabilities, verified install/rollback path (FR-11/FR-12), and the
+`toolset.push`-vs-RDM boundary (A6) already designed for any toolset.
+Nothing about app distribution needs bespoke design; it reuses
+machinery that already exists for exactly this purpose.
+
 ## File/Component Changes
 
 - `sandboxed-runtime/spec.md`: remove the "toolsets only, not

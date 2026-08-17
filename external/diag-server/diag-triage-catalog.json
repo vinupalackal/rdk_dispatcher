@@ -1,0 +1,19 @@
+{
+  "_comment": "Corrected 2026-08-14 (NFR-007, docs/24_diag_server_merge_plan.md §2/§6): command execution no longer goes through a shell -- 'command' is now tokenized directly into an argv vector for execvp(), so shell metacharacters ( | ; & $ ` > < * etc.) are NOT interpreted and must not appear here. 'active_connections' previously relied on a shell pipe ('| grep ESTABLISHED | wc -l') and stderr redirection ('2>/dev/null'); both are now expressed as explicit fields ('count_lines_matching', 'suppress_stderr') applied natively by diag-server-nn.c instead of by a shell. See README.md §1.4/§3.5 for field semantics. Added 2026-08-14 (same date, follow-up): every tool entry now also declares 'type' and 'plane'. 'type' is 'static' (default; fixed catalog command, a caller override must name the same program -- is_command_safe() enforces this) or 'dynamic' (this tool is intentionally caller-command-driven; is_command_safe() skips the program-pin check for it and applies only the blocklist -- see README.md §1.4 item 4/5 and REQUIREMENTS.md FR-011b). 'plane' categorizes the tool per this project's plane model (config-apply/management/control/triage) for the future toolset-manifest conversion (docs/24 step 2) -- diag-server itself does not branch on this field.",
+  "_catalog_version_comment": "Added 2026-08-15, docs/24_diag_server_merge_plan.md §15 B.1. A monotonic integer, bumped by whatever produces a new catalog (RDM package build, manual edit). Not read for ordering -- PUSH's base_version check (§11.1) is an exact-match compare-and-swap against this value, not a newer-than comparison, so the value only needs to be unique per catalog revision, not sortable. No consumer yet at request-handling time; load_catalog() reads and logs it for now, F3's swap mechanism (§15 B.2) is the first real consumer.",
+  "_catalog_version": 1,
+  "tools": {
+    "ping_google_ip":     {"command": "/bin/ping -c 3 8.8.8.8", "timeout": 10, "type": "static", "plane": "triage"},
+    "wan_status":         {"command": "/sbin/ifconfig erouter0", "timeout": 5, "type": "static", "plane": "triage"},
+    "dns_servers":        {"command": "cat /etc/resolv.conf", "timeout": 5, "type": "static", "plane": "triage"},
+    "parodus_health":     {"command": "cat /tmp/parconnhealth.txt", "timeout": 5, "type": "static", "plane": "triage"},
+    "device_uptime":      {"command": "cat /proc/uptime", "timeout": 5, "type": "static", "plane": "triage"},
+    "memory_usage":       {"command": "cat /proc/meminfo", "timeout": 5, "type": "static", "plane": "triage"},
+    "interface_config":   {"command": "/sbin/ifconfig", "timeout": 5, "type": "static", "plane": "triage"},
+    "routing_table":      {"command": "/sbin/route -n", "timeout": 5, "type": "static", "plane": "triage"},
+    "active_connections": {"command": "/bin/netstat -n", "suppress_stderr": true, "count_lines_matching": "ESTABLISHED", "timeout": 5, "type": "static", "plane": "triage"},
+    "process_status":     {"command": "/bin/ps", "timeout": 5, "type": "static", "plane": "triage"},
+    "kernel_log":         {"command": "/bin/dmesg", "timeout": 10, "type": "static", "plane": "triage"},
+    "adhoc_diagnostic":   {"_comment": "Example 'dynamic' tool, added 2026-08-14. No fixed 'command' -- the caller must supply one in the request. is_command_safe() applies only the blocklist to it, not program-pinning, since there's no catalog-declared program to pin against.", "timeout": 15, "type": "dynamic", "plane": "triage"}
+  }
+}

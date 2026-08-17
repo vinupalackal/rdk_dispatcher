@@ -72,12 +72,14 @@ extern char *jsonrpc_result(const char *id, const char *result_json);
 // Single entry point for an external command, whether it arrived framed as
 // an MCP tools/call (name = "<toolset>", arguments = {"method": "<method>",
 // "params": {...}} -- one MCP tool per toolset, not per method, per
-// define-toolset-as-mcp-tool-model's revised tools/list granularity) or as
-// a plain JSON-RPC 2.0 request (same change -- "tools/call is not a second
-// command path": both shapes reach here identically, already unpacked into
-// separate toolset/method values by whichever framing produced them).
-// caller has already been authenticated (SAT token validated, signature
-// checked) before this function is called -- this function's job starts at
+// openspec/specs/toolset-lifecycle/spec.md's "Toolset schema maps to one
+// MCP tool definition per toolset" requirement) or as a plain JSON-RPC 2.0
+// request (openspec/specs/dispatch-core/spec.md's "`tools/call` uses the
+// standard command path" requirement -- not a second command path: both
+// shapes reach here identically, already unpacked into separate
+// toolset/method values by whichever framing produced them). caller has
+// already been authenticated (SAT token validated, signature checked)
+// before this function is called -- this function's job starts at
 // authorization, not authentication.
 char *dispatcher_handle_command(const char *request_id,
                                  const caller_identity_t *caller,
@@ -124,5 +126,76 @@ char *dispatcher_handle_command(const char *request_id,
     // fire-and-log, no response value). A command has a request/response
     // shape instead (method + params in, a JSON-RPC result out).
     char *result_json = toolset_ipc_forward(&loc, method, params_json);
+    return jsonrpc_result(request_id, result_json);
+}
+
+// -----------------------------------------------------------------------
+// MCP entry points -- added 2026-08-16, implementing openspec/specs/
+// dispatch-core/spec.md's "MCP tool method surface" requirement. Nothing in
+// this codebase had a `tools/call`/`tools/list` framing layer before this;
+// dispatcher_handle_command() above already did all the actual work, it
+// just had no MCP-shaped caller yet.
+// -----------------------------------------------------------------------
+
+// mcp_name_field / mcp_arguments_field are illustrative stand-ins for
+// picking the `name` and `arguments` fields out of an already-JSON-RPC-2.0-
+// parsed MCP `tools/call` request object -- request_json is the parsed
+// object, not a raw string (unlike dispatcher_handle_command()'s
+// params_json, which stays an opaque string all the way through to
+// toolset_ipc_forward() since the toolset process re-parses it itself).
+extern const char *mcp_json_get_string(const void *json_obj, const char *field);
+extern const void *mcp_json_get_object(const void *json_obj, const char *field);
+extern char *mcp_json_serialize(const void *json_obj);
+
+// Unpacks an MCP `tools/call` request -- `{"name": "<toolset>", "arguments":
+// {"method": "<method>", "params": {...}}}` -- into the same
+// (toolset, method, params_json) triple a plain JSON-RPC caller would
+// already produce, then calls dispatcher_handle_command() unchanged. Per
+// openspec/specs/dispatch-core/spec.md's "`tools/call` uses the standard
+// command path" requirement: this function's ENTIRE job is the unpacking
+// above the line below -- everything below it is byte-for-byte the same
+// ACL/resolution/dispatch path a non-MCP caller already goes through. This
+// is deliberately not a rewrite or a parallel implementation of
+// dispatcher_handle_command() -- introducing one here is exactly the kind
+// of accidental second, inconsistent authorization path that requirement's
+// own scenario ("`tools/call` is denied exactly like an equivalent direct
+// call") exists to rule out.
+char *mcp_handle_tools_call(const char *request_id,
+                             const caller_identity_t *caller,
+                             const void *tools_call_request_json) {
+    const char *toolset = mcp_json_get_string(tools_call_request_json, "name");
+    const void *arguments = mcp_json_get_object(tools_call_request_json, "arguments");
+    const char *method = mcp_json_get_string(arguments, "method");
+    const void *params = mcp_json_get_object(arguments, "params");
+    char *params_json = mcp_json_serialize(params);
+
+    return dispatcher_handle_command(request_id, caller, toolset, method, params_json);
+}
+
+// build_tools_list_response() -- defined in mcp_schema_discovery.c, this
+// project's first implementation of the *discovery* half of the MCP tool
+// surface (this file only ever sketched the *command* half, above). Kept as
+// a separate file rather than appended here because it answers a
+// structurally different question (what toolsets/methods exist, filtered by
+// ACL visibility) from what this file answers (route one already-named
+// command through resolve/authorize/dispatch) -- see that file's own header
+// comment for the two-tier visibility model and the live-vs-manifest schema
+// source tradeoff it documents.
+extern char *build_tools_list_response(const caller_identity_t *caller);
+
+// Single entry point for a `tools/list` request. Unlike
+// dispatcher_handle_command()/mcp_handle_tools_call(), there is no
+// (toolset, method) resolution step here -- `tools/list` is inherently
+// cross-toolset, so it has no single toolset to resolve against. caller has
+// already been authenticated the same as for any other request; per-toolset
+// authorization happens INSIDE build_tools_list_response() (once per loaded
+// toolset, via the same acl_policy_store_query() this file's
+// dispatcher_handle_command() uses), not as a single up-front gate the way
+// step 2 of dispatcher_handle_command() is -- `tools/list` deliberately has
+// no request-level allow/deny outcome, only per-entry visibility tiers (see
+// dispatch-core/spec.md's "tools/list visibility is two-tier" requirement).
+char *dispatcher_handle_tools_list(const char *request_id,
+                                    const caller_identity_t *caller) {
+    char *result_json = build_tools_list_response(caller);
     return jsonrpc_result(request_id, result_json);
 }

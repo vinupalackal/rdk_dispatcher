@@ -8,13 +8,19 @@ only in chat.
 
 ## Phase 1: Triage Capability Discovery
 
-**Status: blocked.** Scoped in
-`openspec/changes/add-triage-skillset-mapping-phase1/` — a
-cloud-initiated, read-only query for the device's triage-plane
-capabilities, over WRP with an encrypted JSON payload. Currently
-blocked on confirming A2–A7 in `OPEN_QUESTIONS.md` (the change's own
-design still needs correcting to match the plane-vs-toolset and MCP
-`tools/list` decisions once those are confirmed and archived).
+**Status: applied 2026-08-16.** Spec now lives in
+`openspec/specs/triage/spec.md`. A cloud-initiated, read-only
+`tools/list` query surfaces the device's triage-plane capabilities
+(plain, unencrypted JSON-RPC per Phase 1's A7 scoping — payload
+encryption is Phase 2, not this phase), via the generic `tools/list`
+mechanism `define-toolset-as-mcp-tool-model` established (also
+applied — `openspec/specs/dispatch-core/spec.md`/
+`openspec/specs/toolset-lifecycle/spec.md`), including the confirmed
+`tools/list` metadata/ACL-scoping resolution
+(`openspec/specs/dispatch-core/spec.md`'s two-tier visibility
+requirement, `OPEN_QUESTIONS.md` A17). Full design history and the
+two corrections this change went through are preserved in
+`openspec/changes/archive/add-triage-skillset-mapping-phase1/`.
 
 **Explicitly not required for Phase 1, by design:** out-of-process
 execution and sandboxing, and payload encryption. Phase 1 is read-only
@@ -97,17 +103,25 @@ exception itself once this phase starts.**
   §3, not done yet.
 
 - **Should toolsets be MCP-discoverable/invocable, and does dynamic
-  push require out-of-process execution?** `openspec/changes/define-toolset-as-mcp-tool-model/`
-  — **confirmed.** Yes to both. Additionally confirmed: the device
-  agent publishes its toolset list first, on session establishment —
-  push is the primary discovery path, `tools/list` is a secondary,
-  on-demand confirmation (this also resolves `OPEN_QUESTIONS.md` C4).
-  Dynamic push's out-of-process sandboxing is required in general —
-  **except** Phase 1's specific command-execution/`toolset.push`
-  exception above, which runs in-process for now. This phase's job for
-  that exception is to harden it to the out-of-process model, not
-  introduce out-of-process execution for the first time. See
-  `OPEN_QUESTIONS.md` A4.
+  push require out-of-process execution?** **Confirmed and applied
+  2026-08-16** — `openspec/specs/dispatch-core/spec.md`,
+  `openspec/specs/toolset-lifecycle/spec.md`, and
+  `openspec/specs/capability-sync/spec.md` now carry the full MCP
+  tool-method surface (`tools/list`/`tools/call`/`notifications/tools/list_changed`),
+  the coarse one-MCP-tool-per-toolset `tools/list` shape with its
+  sibling `methods` metadata field, and the two-tier ACL-scoped
+  `tools/list` visibility model (`OPEN_QUESTIONS.md` A4/A11–A14/A17).
+  The device agent publishes its toolset list first, on session
+  establishment — push is the primary discovery path, `tools/list` is
+  a secondary, on-demand confirmation (also resolves
+  `OPEN_QUESTIONS.md` C4). Dynamic push's out-of-process sandboxing is
+  required in general — **except** Phase 1's specific
+  command-execution/`toolset.push` exception above, which runs
+  in-process for now. This phase's job for that exception is to harden
+  it to the out-of-process model, not introduce out-of-process
+  execution for the first time. Design history for both merged changes
+  is preserved in `openspec/changes/archive/`. Actual device-side
+  *implementation* (code, not spec) is still Phase 2 work.
 
 - **Payload-level encryption for WRP messages.**
   `openspec/changes/require-payload-encryption-and-message-routing/`
@@ -176,8 +190,9 @@ exception itself once this phase starts.**
   concludes. See `OPEN_QUESTIONS.md` B4.
 
 - **Resources vs. tools for config/management/control-plane reads.**
-  `openspec/changes/define-toolset-as-mcp-tool-model/` — deferred
-  2026-08-13 (`OPEN_QUESTIONS.md` A11): the triage plane keeps its
+  `openspec/changes/archive/define-toolset-as-mcp-tool-model/` (applied
+  2026-08-16) — deferred 2026-08-13 (`OPEN_QUESTIONS.md` A11): the
+  triage plane keeps its
   current unified-tools model unchanged; whether the other three
   planes' reads should be split into MCP resources, distinct from
   invocable tools, is decided here, once those toolsets have a real

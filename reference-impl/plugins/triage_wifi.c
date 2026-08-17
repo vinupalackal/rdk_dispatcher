@@ -8,6 +8,17 @@
 
 static const char *events[] = { "wifi-radio-reset", "wifi-radio-reset-timeout" };
 
+// params_schema: illustrative JSON Schema string for this method's `params`
+// sub-schema inside its tools/list oneOf branch (plugin_contract.h,
+// params_schema field) -- one plugin descriptor, reused by both the
+// internal sysevent dispatch path and mcp_schema_discovery.c's external
+// tools/list path, not a second declaration authored separately.
+static const char *wifi_triage_params_schema =
+    "{\"type\":\"object\",\"properties\":"
+    "{\"radio_id\":{\"type\":\"string\"},"
+    "\"reset_reason\":{\"type\":\"string\"}},"
+    "\"required\":[\"radio_id\"]}";
+
 plugin_descriptor_t *describe(void) {
     static plugin_descriptor_t desc = {
         .plane = "triage",
@@ -16,7 +27,8 @@ plugin_descriptor_t *describe(void) {
         .event_count = 2,
         .timeout_ms = 200,   // triage capture must be fast -- enqueue, don't block
         .load_type = "dynamic",  // loaded from /usr/libexec/dispatcher/triage/*.so
-        .version = "1.2.0"
+        .version = "1.2.0",
+        .params_schema = wifi_triage_params_schema
     };
     return &desc;
 }

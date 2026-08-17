@@ -6,13 +6,21 @@
 // triage_static_registry_init() (below) calls describe() directly instead
 // of going through dispatcher_load_plugins()'s scan-and-dlopen loop.
 //
-// See openspec/changes/add-triage-skillset-mapping-phase1/design.md,
-// "static + dynamic plugin merge happens inside the Triage Toolset process."
+// See openspec/specs/triage/spec.md, "Static and dynamic plugin capability
+// merge" (formerly documented under the now-archived
+// openspec/changes/archive/add-triage-skillset-mapping-phase1/design.md,
+// applied into that base spec 2026-08-16).
 
 #include "plugin_contract.h"
 
 static const char *events[] = { "dispatcher-self-check" };
 
+// params_schema: this method takes no arguments -- a self-check sweep needs
+// nothing from the caller beyond the `tools/call` itself. NULL means "no
+// arguments" per plugin_contract.h's own comment on the field
+// (mcp_schema_discovery.c/triage_build_schema_response() fill in the
+// `{"type":"object","properties":{}}` default), so this is left unset
+// rather than spelled out redundantly.
 plugin_descriptor_t *describe(void) {
     static plugin_descriptor_t desc = {
         .plane = "triage",
@@ -21,7 +29,8 @@ plugin_descriptor_t *describe(void) {
         .event_count = 1,
         .timeout_ms = 100,
         .load_type = "static",   // compiled into the Triage Toolset binary
-        .version = "1.0.0"
+        .version = "1.0.0",
+        .params_schema = NULL
     };
     return &desc;
 }

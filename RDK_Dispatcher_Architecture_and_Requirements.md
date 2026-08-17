@@ -121,7 +121,11 @@ events — it is small and stable by construction.
 ### 4.3 Toolset Plugins
 
 The actual capability implementations (common, network, Wi-Fi, DOCSIS,
-vendor-supplied categories, extensible). Each Toolset Plugin process
+application, vendor-supplied categories, extensible — "application"
+added 2026-08-14, `define-plane-vs-toolset-model` Decision F:
+application lifecycle management is a toolset domain like any other,
+not a fifth plane; it uses the existing four planes internally). Each
+Toolset Plugin process
 owns **its own** method-name-to-handler dispatch table internally —
 this is the "owner" half of the broker/owner split, exactly matching
 how `rpcd` itself dispatches methods inside the owning process, how an

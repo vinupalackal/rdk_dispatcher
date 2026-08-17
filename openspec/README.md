@@ -14,7 +14,8 @@ openspec/
 │   ├── sandboxed-runtime/spec.md
 │   ├── platform-adapters/spec.md
 │   ├── capability-sync/spec.md
-│   └── toolset-lifecycle/spec.md
+│   ├── toolset-lifecycle/spec.md
+│   └── triage/spec.md            # added 2026-08-16, first domain toolset applied
 └── changes/
     ├── define-sat-token-format/  # a worked example: one of our open questions,
     │                              # run as an actual OpenSpec change
@@ -22,7 +23,10 @@ openspec/
     │   ├── design.md
     │   ├── tasks.md
     │   └── specs/dispatch-core/spec.md   (delta: MODIFIED)
-    └── archive/                  # empty until this example change is archived
+    └── archive/                  # applied changes' design history —
+        ├── define-toolset-as-mcp-tool-model/
+        ├── add-triage-skillset-mapping-phase1/
+        └── resolve-tools-list-metadata-and-acl-scoping/
 ```
 
 Each `specs/<domain>/spec.md` was seeded directly from the FR/NFR

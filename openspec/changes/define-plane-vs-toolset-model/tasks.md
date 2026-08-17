@@ -55,3 +55,13 @@ assumed the now-withdrawn plane exemption.
       namespace entry or diverge — left to platform integrators per
       Decision D, not fixed here; needs a first real worked example
       before treating this as settled in practice
+
+## 6. New, from Decision F (application as a toolset domain)
+- [x] 6.1 ~~Document "application" in the extensible toolset-domain
+      list~~ — done, `RDK_Dispatcher_Architecture_and_Requirements.md`
+      §4.3
+- [ ] 6.2 Once real application toolsets are being designed, confirm
+      by worked example that config-apply/management/control/triage
+      logic for an app genuinely fits the existing four planes with no
+      awkward edge case — Decision F is reasoned, not yet tested
+      against a real application toolset's actual method list
