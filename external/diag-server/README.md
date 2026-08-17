@@ -344,6 +344,25 @@ cmake -S . -B build
 cmake --build build
 ```
 
+**Build-time options (added 2026-08-16):** two of `diag-server-nn.c`'s
+compiled-in behavior flags are now exposed as CMake cache options,
+`#ifndef`-guarded in the source so the defaults below match today's
+source exactly when left untouched:
+
+| CMake option | Default | Controls |
+|---|---|---|
+| `DIAG_SERVER_REGISTER_WITH_PARODUS` | `ON` | `REGISTER_WITH_PARODUS` — send the WRP type-9 registration to Parodus at startup |
+| `DIAG_SERVER_PUSH_REQUIRE_LOCAL_ONLY` | `OFF` | `PUSH_REQUIRE_LOCAL_ONLY` — restrict catalog PUSH to the local-only endpoint |
+
+```bash
+cmake -S . -B build -DDIAG_SERVER_REGISTER_WITH_PARODUS=OFF -DDIAG_SERVER_PUSH_REQUIRE_LOCAL_ONLY=ON
+```
+
+See `diag-server_1.0.bb`'s `PACKAGECONFIG` entries for the Yocto-level
+equivalent of these two flags, and each `#define`'s own comment in
+`diag-server-nn.c` for the security tradeoffs behind their current
+defaults.
+
 ### 3.3 Install
 
 ```bash
@@ -574,18 +593,36 @@ changed.
 - Local endpoint (added 2026-08-15, §15 B.4 part 1 — additive, alongside
   the public pair above, best-effort at startup): recv
   `ipc:///run/dispatcher/diagnostics-in.sock`, send
-  `ipc:///run/dispatcher/diagnostics-out.sock`. PUSH is only accepted
-  here — a PUSH received via the public pair is rejected outright (no
-  ACL check gates it otherwise, see below). DESCRIBE/HEALTH/EXEC are
-  reachable on both.
-- Registration to Parodus (§15 B.4 part 2 — **flipped 2026-08-16**,
-  after D.1/D.3 both passed): `REGISTER_WITH_PARODUS` is `0` —
-  diag-server no longer sends its WRP type-9 registration, so Parodus
-  has no route to `CLIENT_URL` and the local endpoint is now the only
-  practically reachable address. The public PULL/PUSH sockets
-  themselves are still bound/connected (outbound traffic like
-  `capability_sync.updated` is unaffected); only the registration send
-  is gated. Revert by flipping `REGISTER_WITH_PARODUS` back to `1`.
+  `ipc:///run/dispatcher/diagnostics-out.sock`. PUSH was originally
+  restricted to this local endpoint only (a PUSH received via the
+  public pair was rejected outright). **Changed 2026-08-16, by direct
+  instruction**: `PUSH_REQUIRE_LOCAL_ONLY` is now `0`, so PUSH is
+  accepted on either pair, with no ACL check on either — any
+  WRP-addressable caller reaching the public pair can push a new
+  catalog to any plane, subject only to the blocklist/program-pin
+  checks `catalog_apply_push()` already runs on the diff's contents,
+  not on who's allowed to send it. Revert by flipping
+  `PUSH_REQUIRE_LOCAL_ONLY` back to `1`. DESCRIBE/HEALTH/EXEC are
+  reachable on both pairs, as before; EXEC alone is ACL-gated per tool
+  (see `diag_acl_check()` above).
+- Registration to Parodus (§15 B.4 part 2): `REGISTER_WITH_PARODUS` was
+  briefly flipped to `0` on 2026-08-16 (after D.1/D.3 both passed) so
+  diag-server would stop sending its WRP type-9 registration, making
+  the local endpoint its only practically reachable address — the
+  intended end state of §10.2 Option A, where Dispatch Core owns the
+  public registration and forwards ACL-checked requests locally.
+  **Reverted the same day, by direct instruction** — registration is
+  needed at diag-server startup again, so `REGISTER_WITH_PARODUS` is
+  back to `1` and diag-server registers with Parodus directly, as
+  before. The public PULL/PUSH sockets were never unbound either way
+  (outbound traffic like `capability_sync.updated` was unaffected
+  throughout). **Caveat this revert reopens**: with registration back
+  on, diag-server is directly reachable from Parodus/the cloud again,
+  and `acl_policy_store_query()` (the function `diag_acl_check()`
+  depends on) still has no implementation anywhere in this codebase —
+  so there is currently no working ACL enforcement on that public path.
+  See the `REGISTER_WITH_PARODUS` `#define`'s own comment in
+  `diag-server-nn.c` for the full history.
 - ACL gate (added 2026-08-15, §13.4): every EXEC request now passes
   through `diag_acl_check()` before catalog lookup — denial returns
   `exit_code=126`/`stdout="access denied"`. Thin wrapper around

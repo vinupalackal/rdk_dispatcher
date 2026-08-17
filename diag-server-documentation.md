@@ -39,9 +39,9 @@ Diag-Server binds/connects **two** separate nanomsg pipeline pairs, serviced by 
 | Local-only | PULL (bind) | `ipc:///run/dispatcher/diagnostics-in.sock` | Best-effort; if the socket directory isn't provisioned, diag-server logs a warning and simply runs without it |
 | Local-only | PUSH (connect) | `ipc:///run/dispatcher/diagnostics-out.sock` | Single connect attempt (not retried) — a PUSH socket queues in the background regardless |
 
-**Registration is currently disabled.** `REGISTER_WITH_PARODUS` is compiled to `0`: diag-server no longer sends its WRP type-9 registration to Parodus, so Parodus has no route to the public `CLIENT_URL`. The public PULL/PUSH sockets are still bound/connected (outbound traffic like capability-sync is unaffected) — only the inbound registration announcement is suppressed. In practice this makes the local-only endpoint the only address anything can currently reach diag-server through. Reverting is a single `#define` flip.
+**Registration is currently enabled.** `REGISTER_WITH_PARODUS` is compiled to `1` (as of 2026-08-16): diag-server sends its WRP type-9 registration to Parodus at startup, same as it always did, so it's reachable on the public pair as well as the local-only one. This flag was briefly set to `0` earlier the same day, as the intended end state of a plan to have Dispatch Core own the public registration and forward only ACL-checked requests to diag-server locally — that flip was reverted by direct instruction because registration was needed at startup again. **Caveat:** with the public path open again, `acl_policy_store_query()` — the function `diag_acl_check()` depends on to gate EXEC requests (see §2.5) — still has no implementation anywhere in this codebase, so there is currently no working ACL enforcement on the public path. Flipping `REGISTER_WITH_PARODUS` back to `0` is a single `#define` change if that exposure needs closing again before a real ACL implementation exists.
 
-**PUSH (catalog update) is transport-restricted.** A catalog-push request is only honored if it arrives on the local-only endpoint; one received via the public pair is rejected outright, since no ACL check currently protects that path. DESCRIBE/HEALTH/EXEC carry no such restriction — EXEC is instead ACL-gated per tool (§2.5).
+**PUSH (catalog update) transport restriction has been removed (2026-08-16, by direct instruction).** A catalog-push request was originally only honored if it arrived on the local-only endpoint. `PUSH_REQUIRE_LOCAL_ONLY` is now `0`, so PUSH is accepted on either pair — **with no ACL check on either.** Any WRP-addressable caller reaching the public pair can push a new catalog to any plane; `catalog_apply_push()` still validates the diff's *content* (blocklist/program-pin checks on any new/modified command), but nothing checks *who* is allowed to send the PUSH. Revert by flipping `PUSH_REQUIRE_LOCAL_ONLY` back to `1`. DESCRIBE/HEALTH/EXEC carry no transport restriction either way — EXEC is instead ACL-gated per tool (§2.5).
 
 ### 2.3 Threading and locking
 
@@ -53,9 +53,7 @@ Diag-Server binds/connects **two** separate nanomsg pipeline pairs, serviced by 
 ### 2.4 Data flow (EXEC request)
 
 ```
-OPS Gateway --WRP type=3--> Parodus --(public pair, currently unreachable
-                                        since registration is disabled)-->
-                                       diag-server PULL
+OPS Gateway --WRP type=3--> Parodus --(public pair)-------------------->  diag-server PULL
         or  Dispatch Core -------(local pair)-------------------------->  diag-server PULL
 
 diag-server: decode outer WRP -> decode inner payload (tool/command/plane)
@@ -81,7 +79,7 @@ diag-server: decode outer WRP -> decode inner payload (tool/command/plane)
 6. **Output cap.** Captured stdout is bounded at 64 KiB; the child is killed if it keeps writing past the cap.
 7. **Per-tool timeout.** Enforced as a hard wall-clock ceiling (`SIGKILL` on expiry) — from the catalog's `timeout` field, or a 30-second default. A timed-out command returns `exit_code: 124` with `stdout: "command timed out after Ns"`.
 8. **ACL gate.** Every EXEC request calls `diag_acl_check()` → `acl_policy_store_query(caller, "diagnostics", tool)` before catalog lookup. A denial returns `{"tool", "exit_code": 126, "stdout": "access denied"}` without ever reaching the catalog. **Caveat:** `acl_policy_store_query()` has no implementation anywhere in this codebase yet — its transport is a still-open, project-wide dependency — so this code compiles but will not currently link into a runnable binary. Caller identity is also currently just the WRP `source` field with no group/permission data, pending a real token format.
-9. **PUSH transport restriction.** As described in §2.2 — a catalog push is rejected unless it arrives on the local-only endpoint.
+9. **PUSH transport restriction — removed 2026-08-16.** As described in §2.2 — a catalog push was originally rejected unless it arrived on the local-only endpoint; that gate is now off by default (`PUSH_REQUIRE_LOCAL_ONLY = 0`), so a PUSH from either pair is honored with no ACL check.
 
 ---
 
@@ -124,7 +122,7 @@ Diag-Server registers signal handlers for `SIGTERM`/`SIGINT`, loads catalogs, va
 
 | Symptom | Likely cause / fix |
 |---|---|
-| No responses at all | Verify Parodus is listening on `127.0.0.1:6666` and diag-server bound `127.0.0.1:6669`; check the startup log for registration status (registration to Parodus is currently disabled by default — see §2.2 — so the local endpoint may be the only reachable path). |
+| No responses at all | Verify Parodus is listening on `127.0.0.1:6666` and diag-server bound `127.0.0.1:6669`; check the startup log for registration status (registration to Parodus is currently enabled by default — see §2.2). |
 | `"tool not in catalog"` | The `tool` name isn't in the resolved plane's catalog, or (if no `plane` was given) the name is ambiguous across more than one loaded plane. |
 | `"command blocked or missing"` | The resolved command hit the blocklist, or (dynamic tool) failed the program-pin/blocklist check in `is_command_safe()`. Check syslog for `unsafe command rejected for tool '<tool>'`. |
 | `exit_code: 126`, `stdout: "access denied"` | ACL denial from `diag_acl_check()`. |
@@ -190,7 +188,7 @@ A type-3 message's `payload` field is itself a msgpack map (the "inner payload")
 - `diff.removed` is applied first (name list), then `added`/`modified` (both upsert semantics — whole-tool replacement) — so a name in both `removed` and `added` in the same diff ends up present, not dropped.
 - Only tools the diff actually touches are re-validated; a pre-existing skip on an untouched tool doesn't block the push.
 - On success, the promoted catalog is persisted to disk (fsync'd temp file + atomic rename) **before** the response is sent — a persistence failure rejects the whole push, so memory and disk never diverge.
-- **Only accepted via the local-only endpoint** — rejected outright if received on the public (Parodus-facing) pair.
+- **Accepted on either transport, as of 2026-08-16** — was originally restricted to the local-only endpoint (public-pair PUSH rejected outright); that restriction is now off by default and there is no ACL check on either pair, so anything that can reach the public pair can push a catalog change.
 
 **Response:**
 ```json
@@ -269,7 +267,7 @@ Also fires an outbound `capability_sync.updated` JSON-RPC 2.0 notification over 
 | Public client bind URL | `tcp://127.0.0.1:6669` |
 | Local recv endpoint | `ipc:///run/dispatcher/diagnostics-in.sock` |
 | Local send endpoint | `ipc:///run/dispatcher/diagnostics-out.sock` |
-| Registration to Parodus | disabled (`REGISTER_WITH_PARODUS = 0`) |
+| Registration to Parodus | enabled (`REGISTER_WITH_PARODUS = 1`) |
 | Default catalog directory | `/etc/diag-server` |
 | Receive timeout | 2000 ms |
 | Send timeout | 5000 ms |
@@ -280,6 +278,7 @@ Also fires an outbound `capability_sync.updated` JSON-RPC 2.0 notification over 
 
 ## 6. Known open gaps
 
+- **Public path is currently unauthenticated for both EXEC and PUSH.** As of 2026-08-16: registration to Parodus is back on (`REGISTER_WITH_PARODUS = 1`) and PUSH's local-only restriction is off (`PUSH_REQUIRE_LOCAL_ONLY = 0`), both by direct instruction — but `acl_policy_store_query()` (below) has no implementation, so EXEC's ACL gate cannot enforce anything, and PUSH has no ACL check by design at all. In this configuration, anything that can reach the public Parodus-facing pair can both run any catalog tool and rewrite the catalog itself.
 - **ACL enforcement is wired but not linkable.** `acl_policy_store_query()` has no implementation anywhere yet; its transport is an unresolved, project-wide dependency shared with the RDK Dispatcher project's own toolset ACL model.
 - **Caller identity is minimal.** `diag_acl_check()` currently populates `caller_identity_t` from just the WRP `source` field, with no groups — real identity/token format is still open.
 - **No unit tests for msgpack encode/decode**, and no integration harness with a mock Parodus endpoint (both listed as improvement areas in the repo's own README).

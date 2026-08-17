@@ -1,0 +1,85 @@
+[Unit]
+Description=RDK Diagnostic Service (diag-server)
+Documentation=https://github.com/<org>/<repo>/blob/main/README.md
+# diag-server registers with Parodus over nanomsg at startup (best-effort
+# retry/backoff internally if Parodus isn't up yet -- this ordering is a
+# nicety, not a hard requirement diag-server enforces itself) and
+# separately binds a local-only endpoint at /run/dispatcher/*.sock for
+# Dispatch Core, which is best-effort at startup too (falls back to
+# public-only if that directory isn't provisioned when this unit starts).
+After=network.target parodus.service
+Wants=parodus.service
+
+[Service]
+Type=simple
+
+# CATALOG_DIR's own compiled-in default is already /etc/diag-server --
+# passed explicitly here anyway so the effective catalog location is
+# visible from `systemctl cat diag-server` without reading the source.
+# Point this at a different directory if your image lays catalogs out
+# elsewhere.
+ExecStart=/usr/bin/diag-server /etc/diag-server
+
+Restart=on-failure
+RestartSec=2
+# diag-server's own internal Parodus PUSH-connect retry already backs off
+# up to 60s on its own (see main()'s connect loop) -- RestartSec here is
+# for the *process* dying (e.g. an unhandled fault), a different failure
+# mode from "Parodus isn't up yet," which diag-server tolerates without
+# needing systemd to restart it.
+
+# ── User/privilege model -- NOT decided for you, read before deploying ──
+# Left running as root by default (no User=/Group= line below) because
+# several stock catalog tools in diag-triage-catalog.json shell out to
+# commands that commonly need root or CAP_NET_ADMIN on an embedded RDK
+# target -- ifconfig, route -n, and (depending on target) netstat/dmesg.
+# If your image runs these as an unprivileged service user instead,
+# uncomment and adjust the two lines below, and verify every catalog tool
+# your deployment actually uses still succeeds under that user -- this
+# is a per-target decision this unit file cannot make for you.
+#User=diag-server
+#Group=diag-server
+
+# The local-only IPC endpoint (DIAG_LOCAL_RECV_URL/DIAG_LOCAL_SEND_URL,
+# ipc:///run/dispatcher/diagnostics-{in,out}.sock) needs /run/dispatcher
+# to exist before diag-server's best-effort bind attempt at startup, or
+# it silently falls back to serving only the public Parodus pair.
+# RuntimeDirectory here creates it (tmpfs, cleared/recreated every start,
+# standard systemd convention for /run) -- NOTE: if Dispatch Core (once
+# it exists as its own service) also declares
+# RuntimeDirectory=dispatcher, systemd shares one directory between
+# whichever unit starts first and later starters, owned per whichever
+# User=/Group= that first unit specifies; align the two units' User/Group
+# if you lock either down, or this directory's ownership may not be what
+# the second service expects.
+RuntimeDirectory=dispatcher
+RuntimeDirectoryMode=0750
+
+# diag-server rewrites its own catalog files on disk on a successful PUSH
+# (§15 B.2.5 -- fsync'd temp file + atomic rename, same directory as the
+# catalog it's replacing) -- /etc/diag-server must stay writable to this
+# service, not just readable, or every PUSH will fail at the persist step
+# even though the in-memory validation passed.
+ReadWritePaths=/etc/diag-server /run/dispatcher
+
+# Conservative hardening that doesn't conflict with the above -- NOT
+# ProtectSystem=strict, since that would fight ReadWritePaths and this
+# service's legitimate need to invoke arbitrary system diagnostic
+# binaries system-wide (not just under one prefix).
+NoNewPrivileges=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=diag-server
+# diag-server also calls openlog(LOG_IDENT, ...)/syslog() directly
+# (ident "diag-server") independent of stdout/stderr capture above --
+# both paths land in the journal on a systemd host; SyslogIdentifier here
+# only labels whatever diag-server writes to stdout/stderr directly (there
+# currently is none -- all of its own logging goes through syslog()), kept
+# for consistency/future-proofing if that ever changes.
+
+[Install]
+WantedBy=multi-user.target

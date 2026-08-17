@@ -48,29 +48,32 @@
  *   See handle_local_request() for the dispatch and each kind's own
  *   handler/decoder/builder for the full field semantics.
  *
- * Transport (docs/24_diag_server_merge_plan.md §15 B.4, both parts now
- * implemented -- part 1 added 2026-08-15, part 2 added 2026-08-16
- * after D.1/D.3 passed):
+ * Transport (docs/24_diag_server_merge_plan.md §15 B.4):
  *   diag-server binds two independent socket pairs:
  *     - the original public pair (CLIENT_URL/PARODUS_URL, via Parodus)
  *     - a local-only pair (DIAG_LOCAL_RECV_URL/DIAG_LOCAL_SEND_URL, for
  *       Dispatch Core, once Phase C exists)
  *   Both are serviced by the same message loop (see service_one_message())
  *   and every kind's handler dispatches identically regardless of which
- *   socket a request arrived on -- with one exception: PUSH is rejected
- *   outright if received via the public pair (see
- *   handle_push_request()'s transport-origin check). DESCRIBE/HEALTH/EXEC
- *   carry no such restriction; EXEC is instead gated per-tool by
- *   diag_acl_check() (§13.4, see below). The local pair is best-effort:
+ *   socket a request arrived on. PUSH was originally rejected outright
+ *   if received via the public pair (see handle_push_request()'s
+ *   transport-origin check); as of 2026-08-16, by direct instruction,
+ *   that restriction is gated off (PUSH_REQUIRE_LOCAL_ONLY is 0), so
+ *   PUSH is now accepted on either pair, with no ACL check on either --
+ *   see PUSH_REQUIRE_LOCAL_ONLY's own comment for the exposure this
+ *   creates. DESCRIBE/HEALTH/EXEC carry no transport restriction;
+ *   EXEC is instead gated per-tool by diag_acl_check() (§13.4, see
+ *   below). The local pair is best-effort:
  *   if its directory isn't provisioned, diag-server logs a warning and
- *   falls back to serving only the public pair. Part 2 -- "the actual
- *   point of no return" -- is now flipped: REGISTER_WITH_PARODUS is 0,
- *   so diag-server no longer sends its WRP type-9 registration, and
- *   Parodus has no route to CLIENT_URL as a result. The public
- *   PULL/PUSH sockets themselves are still bound/connected (outbound
- *   traffic like capability_sync.updated is unaffected), only inbound
- *   *registration* is disabled -- see REGISTER_WITH_PARODUS's own
- *   comment for the full rationale and how to revert.
+ *   falls back to serving only the public pair. Part 2 ("the actual
+ *   point of no return", §15 B.4 part 2) -- disabling the public WRP
+ *   type-9 registration so the local pair becomes diag-server's only
+ *   reachable address -- was flipped on 2026-08-16 after D.1/D.3
+ *   passed, then reverted the same day by direct instruction:
+ *   REGISTER_WITH_PARODUS is back to 1, so diag-server registers with
+ *   Parodus at startup as it always did. See REGISTER_WITH_PARODUS's
+ *   own comment (above its #define) for the full history and the ACL
+ *   exposure this reopens.
  *
  * ACL gate and capability-sync (added 2026-08-15, docs/24 §13.4, by
  * direct instruction -- see the code comments at diag_acl_check() and
@@ -130,21 +133,77 @@
  * doesn't silently diverge from what diag-server actually binds. */
 #define DIAG_LOCAL_RECV_URL  "ipc:///run/dispatcher/diagnostics-in.sock"
 #define DIAG_LOCAL_SEND_URL  "ipc:///run/dispatcher/diagnostics-out.sock"
-/* Changed 2026-08-16 (§15 B.4 part 2, docs/24_diag_server_merge_plan.md
- * §12.2 D.4): "the actual point of no return," per the plan's own
- * words -- held at 0 (don't register) throughout this whole project
- * until now, since it was explicitly gated on D.1's and D.3's tests
- * passing (both did, 2026-08-16). Once diag-server stops sending its
- * WRP type-9 registration, Parodus has no route to CLIENT_URL, so the
- * local endpoint (part 1, above) becomes the only address anything can
- * actually reach diag-server through. Deliberately a single flag, not
- * a structural change: the public PULL/PUSH socket pair in main() is
- * still bound/connected exactly as before (g_push_sock is still what
- * diag_notify_capability_sync() sends over, and outbound traffic to
- * Parodus is unaffected by inbound registration) -- only the
- * registration *send* is gated. Flipping this back to 1 is the entire
- * revert, if this cutover is ever undone. */
-#define REGISTER_WITH_PARODUS 0
+/* Set to 0 on 2026-08-16 (§15 B.4 part 2, docs/24_diag_server_merge_plan.md
+ * §12.2 D.4): "the actual point of no return," per the plan's own words --
+ * the intent was for Dispatch Core to take over diag-server's public
+ * Parodus registration (§10.2 Option A) so every diagnostics request
+ * passes through Dispatch Core's ACL Policy Store checkpoint (FR-4)
+ * before it ever reaches diag-server, forwarding allowed requests over
+ * the local endpoint (part 1, above) instead. Held at 0 only after D.1's
+ * and D.3's tests passed, since flipping it makes the local endpoint
+ * diag-server's only reachable address.
+ *
+ * Reverted to 1 on 2026-08-16, by direct instruction: registration is
+ * needed at diag-server startup again. The public PULL/PUSH socket pair
+ * in main() was never removed -- see build_registration()'s send call
+ * site below, left fully intact throughout -- so this is a single-flag
+ * revert, not a rebuild.
+ *
+ * KNOWN GAP re-opened by this revert, not resolved by it: §10.2 Option
+ * A's whole point was that requests reach diag-server only *after*
+ * Dispatch Core's ACL check. With registration back on, diag-server is
+ * once again directly reachable from Parodus/the cloud on the public
+ * pair, and diag_acl_check() (added 2026-08-15, §13.4) is still gating
+ * every EXEC request in handle_request() -- but acl_policy_store_query()
+ * itself has no implementation anywhere in this codebase yet (its
+ * transport is still unresolved, Phase 2), so that check cannot
+ * currently link into a runnable binary at all, let alone enforce
+ * anything. In practice, re-enabling registration without a working
+ * acl_policy_store_query() means every catalog tool is reachable from
+ * the public path with no real ACL enforcement -- same exposure
+ * diag-server had before any of this project's ACL work started. If
+ * that's not acceptable, either keep this at 0 until
+ * acl_policy_store_query() has a real implementation, or restrict which
+ * callers can reach PARODUS_URL by some means outside diag-server
+ * itself.
+ *
+ * Added 2026-08-16: guarded with #ifndef so CMakeLists.txt's
+ * DIAG_SERVER_REGISTER_WITH_PARODUS option (default ON, matching this
+ * source default of 1) can override it at build time via
+ * target_compile_definitions(), e.g. for a Yocto PACKAGECONFIG. Building
+ * with no override at all reproduces exactly this source default --
+ * this #define is not dead code, it's the fallback for a plain
+ * `cmake --build` with no `-D` passed. */
+#ifndef REGISTER_WITH_PARODUS
+#define REGISTER_WITH_PARODUS 1
+#endif
+/* Added 2026-08-15 (§15 B.4): gated PUSH (catalog update) to the
+ * local-only endpoint only, since no ACL/authorization check exists on
+ * that path and the public endpoint was live at the same time during
+ * the transition -- see handle_push_request()'s own comment at its
+ * `if (!req->from_local)` check for the full original rationale.
+ *
+ * Set to 0 on 2026-08-16, by direct instruction: PUSH is now accepted
+ * on the public pair as well as the local one, unconditionally, with
+ * no ACL check either way. This is a considered, requested change, not
+ * an oversight -- but it means any WRP-addressable caller that can
+ * reach PARODUS_URL (which is reachable again now that
+ * REGISTER_WITH_PARODUS is back to 1, above) can push a new catalog to
+ * any plane: add/remove/modify tools, including their `command`
+ * strings, subject only to the blocklist and program-pin checks
+ * `catalog_apply_push()`'s validation step already runs -- there is no
+ * check anywhere on *who* is allowed to push. If that's not
+ * acceptable, either flip this back to 1 (a single #define, reverting
+ * to local-only PUSH) or add a real authorization check ahead of
+ * catalog_apply_push(), the same way diag_acl_check() gates EXEC.
+ *
+ * Added 2026-08-16: guarded with #ifndef so CMakeLists.txt's
+ * DIAG_SERVER_PUSH_REQUIRE_LOCAL_ONLY option (default OFF, matching
+ * this source default of 0) can override it at build time, same
+ * pattern as REGISTER_WITH_PARODUS above. */
+#ifndef PUSH_REQUIRE_LOCAL_ONLY
+#define PUSH_REQUIRE_LOCAL_ONLY 0
+#endif
 #define SERVICE_NAME         "diag-server"
 /* Changed 2026-08-15 (§15 B.5): a directory of per-plane catalog files,
  * not one catalog file path. Overridden by argv[1]. */
@@ -765,7 +824,11 @@ typedef enum {
     PUSH_ERR_PERSIST_FAILED,
     /* Added 2026-08-15 (§15 B.4): PUSH received via the public,
      * Parodus-facing socket rather than the new local-only endpoint.
-     * See handle_push_request()'s transport-origin check. */
+     * See handle_push_request()'s transport-origin check. Currently
+     * unreachable as of 2026-08-16 -- PUSH_REQUIRE_LOCAL_ONLY is 0, so
+     * that check never fires -- but the status code is left defined
+     * rather than removed, matching this file's minimal-diff,
+     * single-flag-revert convention. */
     PUSH_ERR_FORBIDDEN_TRANSPORT,
 } push_status_t;
 
@@ -1506,6 +1569,21 @@ static void handle_request(wrp_req_t *req)
         return;
     }
 
+    /* Added 2026-08-16, by direct instruction: log the decoded inner
+     * payload -- what the request actually asked for -- labeled INPUT
+     * so it's unambiguous in syslog which line is the request side of
+     * an exchange versus the OUTPUT line below (the response side).
+     * Logs the decoded fields (tool/command/plane), not the raw
+     * msgpack bytes already covered by "recv ... bytes=%zu" above --
+     * the raw bytes aren't printable text, so the decoded fields are
+     * the meaningful "payload data" to have in the log. */
+    syslog(LOG_INFO, "INPUT message: uuid=%s src=%s tool=%s command='%s' plane=%s",
+           req->transaction_uuid ? req->transaction_uuid : "?",
+           req->source ? req->source : "?",
+           tool,
+           cmd ? cmd : "",
+           req_plane ? req_plane : "(none)");
+
     /* Added 2026-08-15 (§13.4): ACL gate, inserted here per direct
      * instruction -- immediately after decode_request_payload() (so a
      * real tool name exists to check) and before any catalog lookup or
@@ -1763,6 +1841,21 @@ static void handle_request(wrp_req_t *req)
     }
     free(count_lines_matching);
     free(plane_dup);
+
+    /* Added 2026-08-16, by direct instruction: log the resolved output --
+     * whichever of the three branches above produced it (executed
+     * command's stdout, the "tool skipped at init" message, or the
+     * "command blocked or missing"/"tool not in catalog" message) --
+     * labeled OUTPUT so it pairs unambiguously in syslog with the
+     * INPUT line logged near the top of this function for the same
+     * uuid. Placed here, after the if/else-if/else above and before
+     * output is packed into the response payload, so exactly one line
+     * covers every path through this function, not just the executed-
+     * command case run_command()'s own "done tool=... exit=..." line
+     * already covers. */
+    syslog(LOG_INFO, "OUTPUT message: uuid=%s tool=%s exit=%d stdout='%s'",
+           req->transaction_uuid ? req->transaction_uuid : "?",
+           tool, exit_code, output ? output : "");
 
     /* Build and send response */
     size_t pl = 0;
@@ -2340,19 +2433,23 @@ static void handle_push_request(wrp_req_t *req)
     push_outcome_t outcome;
     memset(&outcome, 0, sizeof(outcome));
 
-    /* Added 2026-08-15 (§15 B.4): PUSH is only accepted via the new
-     * local-only endpoint. No ACL/authorization check (§10, §13.4)
-     * exists yet on this path, and B.4 puts the public endpoint and the
-     * local one live at the same time during the transition -- without
-     * this check, any WRP-addressable external caller reaching the
-     * public path could push a new catalog with no authorization check
-     * at all. Rejected here, before the request is even decoded, rather
-     * than inside decode_push_request() or catalog_apply_push(): this is
-     * a transport-origin check, not a content check, and belongs ahead
-     * of both. DESCRIBE and HEALTH carry no such restriction -- they're
-     * read-only/side-effect-free, so leaving them reachable on both
-     * sockets during the transition doesn't reopen this gap. */
-    if (!req->from_local) {
+    /* Originally added 2026-08-15 (§15 B.4): rejected any PUSH not
+     * received via the local-only endpoint, since no ACL/authorization
+     * check (§10, §13.4) existed on this path and the public endpoint
+     * was live at the same time during the transition. A
+     * transport-origin check, not a content check -- deliberately
+     * ahead of decode_push_request()/catalog_apply_push(), not inside
+     * either. DESCRIBE and HEALTH still carry no such restriction --
+     * they're read-only/side-effect-free.
+     *
+     * Gated behind PUSH_REQUIRE_LOCAL_ONLY as of 2026-08-16 (see that
+     * #define's own comment for the full rationale and the exposure
+     * this reopens): now 0, so this branch is unreached and every PUSH
+     * is accepted regardless of which socket it arrived on. The check
+     * itself is left fully intact -- reverting is a single #define
+     * flip, not a rebuild, matching this file's own established
+     * pattern (see REGISTER_WITH_PARODUS). */
+    if (PUSH_REQUIRE_LOCAL_ONLY && !req->from_local) {
         outcome.status = PUSH_ERR_FORBIDDEN_TRANSPORT;
         snprintf(outcome.reason, sizeof(outcome.reason),
                  "PUSH is only accepted on the local endpoint");
@@ -2576,11 +2673,12 @@ int main(int argc, char *argv[])
     if (!g_running) goto shutdown;
 
     /* ── Send registration message ──
-     * Changed 2026-08-16 (§15 B.4 part 2): gated behind
-     * REGISTER_WITH_PARODUS (see its own comment at the top of the
-     * file for the full rationale) -- now 0. build_registration() and
-     * this send are left fully intact, just unreached, so reverting is
-     * a single #define flip, not a rebuild of this logic. */
+     * Gated behind REGISTER_WITH_PARODUS (see its own comment at the
+     * top of the file for the full rationale and history -- briefly
+     * disabled 2026-08-16 per §15 B.4 part 2, re-enabled the same day
+     * by direct instruction, now 1). build_registration() and this
+     * send are unconditional business logic; only the #define decides
+     * whether this call site is reached. */
     if (REGISTER_WITH_PARODUS) {
         size_t reg_len = 0;
         void  *reg_msg = build_registration(&reg_len);

@@ -1445,26 +1445,38 @@ closed.
    catalog state at each point," which exercises the same
    extract-under-mutex-then-release discipline B.2's design relies on,
    without spinning up real concurrent threads a second time.
-4. **D.4 — Flip §15 B.4 part 2 — Implemented 2026-08-16.** D.1 and D.3
-   both passed, unblocking the gate. New `REGISTER_WITH_PARODUS`
-   constant (0), gating the registration-send call site in `main()` —
-   `build_registration()` and the send logic are left fully intact,
-   just unreached, so the entire revert is a single flag flip back to
-   1, not a rebuild. The public PULL/PUSH socket pair is still bound/
-   connected exactly as before this change; only the registration
-   *send* is gated — outbound traffic (`diag_notify_capability_sync()`
-   over `g_push_sock`) is unaffected, since it doesn't depend on
-   inbound registration at all. Once flipped, Parodus has no route to
-   `CLIENT_URL`, so the local endpoint becomes diag-server's only
-   practically reachable address — "the actual point of no return," now
-   crossed.
+4. **D.4 — Flip §15 B.4 part 2 — Implemented 2026-08-16, then reverted
+   the same day by direct instruction.** D.1 and D.3 both passed,
+   unblocking the gate, and `REGISTER_WITH_PARODUS` was set to 0,
+   gating the registration-send call site in `main()`. **Reverted
+   2026-08-16**: registration is needed at diag-server startup again,
+   so `REGISTER_WITH_PARODUS` is back to 1 and diag-server registers
+   with Parodus directly, as it did before this step. `build_registration()`
+   and the send logic were never removed either way — only the
+   `#define` changed, both times. **Re-opened by this revert**: the
+   §10.2 Option A goal this flip was working toward (all diagnostics
+   traffic passing through Dispatch Core's ACL checkpoint before
+   reaching diag-server) no longer holds — diag-server is directly
+   reachable from Parodus again, and `acl_policy_store_query()` still
+   has no implementation anywhere (Phase 2, transport unresolved), so
+   there is no working ACL enforcement on that public path right now.
+   The public PULL/PUSH socket pair was never unbound/disconnected by
+   either state of this flag — outbound traffic (`diag_notify_capability_sync()`
+   over `g_push_sock`) was unaffected throughout, since it doesn't
+   depend on inbound registration at all. With registration back on
+   (current state), Parodus again has a route to `CLIENT_URL`, so
+   diag-server is reachable on both the public and local pairs — "the
+   actual point of no return" was momentarily crossed, then walked
+   back the same day.
 
-   **Verification**: full-file `gcc -fsyntax-only` clean (same two
-   pre-existing cosmetic warnings, nothing new). Functional: an
-   isolated check mirroring the exact gated block confirmed
-   `REGISTER_WITH_PARODUS=0` never calls the registration send and
-   `=1` always does — a deliberately lightweight check matching this
-   change's actual risk level (a single compile-time constant gating
+   **Verification (as of the original 2026-08-16 flip to 0, still
+   valid for the flag mechanism itself)**: full-file `gcc -fsyntax-only`
+   clean (same two pre-existing cosmetic warnings, nothing new).
+   Functional: an isolated check mirroring the exact gated block
+   confirmed `REGISTER_WITH_PARODUS=0` never calls the registration
+   send and `=1` always does — a deliberately lightweight check
+   matching this change's actual risk level (a single compile-time
+   constant gating
    one existing call site, not new business logic), rather than
    rebuilding the full harness infrastructure used for higher-risk
    pieces earlier in this project.
@@ -2479,21 +2491,39 @@ upstream of it is proven, not assumed.
   received via the local endpoint is answered back over the local
   endpoint, not routed to Parodus.
 - **PUSH transport restriction (explicit decision, confirmed with the
-  project owner before implementing)**: `handle_push_request()` now
-  rejects any PUSH where `req->from_local` is false, before decoding
-  the request at all, returning the existing `push_outcome_t` rejection
-  shape with a new `PUSH_ERR_FORBIDDEN_TRANSPORT` status. Reasoning:
-  once both endpoints are live at once, and no ACL check (§10, §13.4)
-  exists yet on this path, an unrestricted PUSH would let any
+  project owner before implementing) — since removed, see below.**
+  `handle_push_request()` originally rejected any PUSH where
+  `req->from_local` was false, before decoding the request at all,
+  returning the existing `push_outcome_t` rejection shape with a new
+  `PUSH_ERR_FORBIDDEN_TRANSPORT` status. Reasoning at the time: once
+  both endpoints were live at once, and no ACL check (§10, §13.4)
+  existed yet on this path, an unrestricted PUSH would let any
   WRP-addressable external caller reaching the public path push a new
-  catalog with zero authorization. DESCRIBE and HEALTH carry no such
+  catalog with zero authorization. DESCRIBE and HEALTH carried no such
   restriction — both are read-only/side-effect-free, so leaving them
-  reachable on both sockets during the transition doesn't reopen this
-  gap. `send_changed_notification()` now takes the outbound socket as a
+  reachable on both sockets during the transition didn't reopen this
+  gap. `send_changed_notification()` takes the outbound socket as a
   parameter (instead of hardcoding `g_push_sock`) and is always called
-  with `req->reply_sock` — since a successful promote can now only
-  originate via the local endpoint, CHANGED always goes out over
-  `g_local_push_sock` in practice.
+  with `req->reply_sock` — originally this meant CHANGED always went
+  out over `g_local_push_sock` in practice, since a successful promote
+  could only originate via the local endpoint; see the update below for
+  why that's no longer true.
+
+  **Removed 2026-08-16, by direct instruction.** The restriction is now
+  gated behind `PUSH_REQUIRE_LOCAL_ONLY` (0 by default), so PUSH is
+  accepted on either socket, unconditionally — the `req->from_local`
+  check and `PUSH_ERR_FORBIDDEN_TRANSPORT` are left fully intact in the
+  code, just unreached, matching the same single-flag-revert pattern as
+  `REGISTER_WITH_PARODUS` (§12.2 D.4). The reasoning above no longer
+  holds by design: with registration also re-enabled (§12.2 D.4's own
+  revert), any WRP-addressable caller reaching the public pair can now
+  push a new catalog to any plane — `catalog_apply_push()`'s own
+  validation still runs (blocklist/program-pin checks against the
+  diff's *content*), but nothing checks *who* is allowed to send a
+  PUSH at all. `send_changed_notification()`'s "always
+  `g_local_push_sock` in practice" note above is therefore also stale —
+  CHANGED now goes out over whichever socket (`g_push_sock` or
+  `g_local_push_sock`) the triggering PUSH itself arrived on.
 
 **Verification:** full-file `gcc -Wall -Wextra -fsyntax-only -pthread`
 against the real file with extended stub headers (added `nn_poll()`/
